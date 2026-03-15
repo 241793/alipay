@@ -1,245 +1,334 @@
-# AliMPay - 支付宝码支付系统Docker(修复原项目的支付回调问题，目前docker正常回调)
+# AliMPay 使用文档与项目介绍
 
-一个基于支付宝转账码的自动化支付解决方案，支持经营码收款和转账码收款两种模式。
+## 1. 项目介绍
 
-![751192321ae102a907612a9ae6307903.png](https://i.mji.rip/2025/07/15/751192321ae102a907612a9ae6307903.png)
+AliMPay 是一个基于支付宝账单检测的聚合收款系统，码支付。  
+系统核心能力：
 
-## 特性
+- 创建支付订单（生成支付页/二维码）
+- 轮询支付宝账单并匹配订单
+- 支付成功后自动回调商户 `notify_url`
+- 支持 PushPlus 消息通知
+- 提供订单状态查询接口
 
-- 🚀 **自动监控**: 实时监控支付宝账单，自动检测支付状态
-- 📱 **码支付**: 支持经营码收款和转账码收款
-- ⏰ **智能超时**: 5分钟支付时限，超时订单自动清理
-- 🔐 **安全可靠**: MD5签名验证，防止数据篡改
-- 🎯 **协议兼容**: 100%兼容CodePay协议
+适用场景：
 
-## 快速配置
+- 个人站点收款
+- 简单订单支付状态管理
+- 需要“支付成功后自动通知”的系统对接
 
-### 1. 环境要求
-#### php
-- PHP 7.4+
-- Composer
-- 支付宝开放平台应用
-#### docker
+docker搭建速通：
+1、首先上传本项目到对应文件，然后拉取镜像
+docker run -d --name alipay -p 5002:80 -v "你的路径\AliMPay-main:/var/www/html" 241793/alipay:latest
+2、填写支付宝配置(config/alipay.php)，上传自己的经营码或收款码到qrcode/business_qr.png
+3、访问http://localhost:8080/health.php生成商户PID等
+4、自己根据文末例子测试是否正常回调
 
+---
 
-### 2. 安装步骤
-#### php
+## 2. 目录与数据说明
+
+项目运行目录（容器内）：`/var/www/html`
+
+关键目录：
+
+- `config/`：配置文件（支付宝参数、PushPlus 配置）
+- `data/`：订单与状态数据（SQLite、锁文件等）
+- `logs/`：运行日志
+- `qrcode/`：二维码资源,经营码改名：business_qr.png
+
+---
+
+## 3. Docker 部署（推荐）
+
+## 3.1 使用 docker compose
+
+在项目根目录执行：
+
 ```bash
-# 下载项目
-# 安装依赖
-composer install
-
-# 复制配置文件
-cp config/alipay.example.php config/alipay.php
+docker compose down
+docker compose up -d --build
 ```
-#### docker
 
-### 3. 支付宝配置
+默认映射：
 
-#### 获取支付宝应用参数
+- 本地项目根目录 -> 容器 `/var/www/html`
+- 端口：`8080 -> 80`
 
-1. 登录 [支付宝开放平台](https://open.alipay.com)
-2. 创建"网页/移动应用"
-3. 获取以下参数：
-   - **应用ID**: 应用详情页的AppId
-   - **应用私钥**: 使用密钥工具生成
-   - **支付宝公钥**: 从平台获取
-   - **用户ID**: 账户中心的账号ID
+访问地址：
+生成商户id
+- `http://localhost:8080/health.php`（第一次必需访问这个）
 
-可以参考这个[文章](https://www.mazhifu.me/mpay/35.html)申请应用，一般都会有一个默认的 生成密钥即可
+## 3.2 使用 docker run
 
+```bash
+docker run -d --name alipay -p 5002:80 -v "你的路径\AliMPay-main:/var/www/html" 241793/alipay:latest
+```
 
-#### 配置文件设置
+说明：
 
-编辑 `config/alipay.php`：
+- 首次启动若无 `vendor/`，会自动执行 Composer 安装（使用国内镜像）
+
+---
+
+## 4. 配置说明
+
+## 4.1 基础配置
+
+首次启动后，确认文件：
+
+- `config/alipay.php`（若不存在会自动从示例复制）
+
+必填项（按你的支付宝应用信息填写）：
+
+- `app_id`
+- `private_key`
+- `alipay_public_key`
+- `transfer_user_id`
+
+## 4.2 PushPlus 配置（支付成功推送）
+
+在 `config/alipay.php` 添加或修改：
 
 ```php
-<?php
-return [
-    'app_id' => 'YOUR_APP_ID',                    // 应用ID
-    'private_key' => 'YOUR_PRIVATE_KEY',          // 应用私钥
-    'alipay_public_key' => 'YOUR_ALIPAY_PUBLIC_KEY', // 支付宝公钥
-    'transfer_user_id' => 'YOUR_USER_ID',         // 支付宝用户ID
-    
-    // 其他配置保持默认即可
-];
+'pushplus' => [
+    'enabled' => true,
+    'token' => '你的pushplus_token',
+    'template' => 'markdown',
+    'channel' => '',
+    'topic' => '',
+    'title_prefix' => 'AliMPay',
+    'endpoint' => 'http://www.pushplus.plus/send',
+],
 ```
 
-#### 获取商户密钥
+说明：
 
-首次运行需要获取系统分配的商户ID和密钥：
+- `enabled=true` 才会发送
+- PushPlus 与商户回调互不冲突，会并行执行
 
-```bash
-# 启动服务
-# 访问健康检查，系统会自动生成商户配置
-curl http://domain/health.php
+---
 
-# 查看生成的商户信息
-cat config/codepay.json
-```
+## 5. 回调与通知机制
 
-**商户配置文件示例**：
-```json
-{
-    "merchant_id": "1001123456789012",
-    "merchant_key": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
-    "created_at": "2024-01-01 12:00:00",
-    "status": 1,
-    "balance": "0.00",
-    "rate": "96"
+支付成功后，系统会尝试两类通知：
+
+1. 商户回调：调用订单中的 `notify_url`
+2. PushPlus 推送：调用 PushPlus API 发送消息
+
+注意：
+
+- `notify_url` 仍建议填写你的业务回调地址（返回 `success`）
+- PushPlus 不替代业务回调，只是额外通知通道
+
+---
+
+## 6. 创建订单时 notify_url,return_url 怎么填
+文末有创建订单例子
+POST /mapi.php  创建订单
+payment_data = {
+  "pid": PID,
+  "type": "alipay",
+  "out_trade_no": "ORDER_" + str(int(time.time())),#订单
+  "notify_url": "",
+  "return_url": "",
+  "name": name,
+  "money": money,
+  "sign_type": "MD5",
 }
+`notify_url` 填你的业务系统回调地址，例如：
+
+`https://your-domain.com/pay/callback`
+
+如果暂时没有业务系统，可先准备一个简单接口，或者自定义通知，固定返回：
+
+```text
+success
 ```
+`return_url` 填你的支付成功跳转的地址
 
-**重要**：请妥善保存 `merchant_id` (商户ID) 和 `merchant_key` （商户密钥） ，这是商户接入时必需的参数。
+---
 
-### 4. 启动服务 下方两个模式二选一
+## 7. 手动检测订单是否支付成功，适用于个人项目
 
+接口：
 
-## 码支付模式
+`GET /api.php?action=order`
 
-### 经营码收款（推荐）
+参数：
 
-> 目前支付宝放水，进入经营码申请页面填写商户信息时，返回，就会提示是否免填写开启经营码
-> 如果实在没有此处使用收款码替代，或者使用下方转账方式
+- `pid`：商户 ID（必填）
+- `out_trade_no`：订单号（必填）
+- `key`：商户密钥（可选）
 
-**特点**: 无需转账备注，通过金额+时间匹配订单
-
-1. **上传经营码**：将支付宝经营码二维码保存为 `qrcode/business_qr.png`
-
-2. **启用配置**：编辑 `config/alipay.php`
-```php
-'payment' => [
-    'business_qr_mode' => [
-        'enabled' => true,  // 启用经营码模式
-    ]
-]
-```
-
-**工作原理**：
-- 相同金额的订单自动增加0.01元偏移（1.00→1.01→1.02...）
-- 客户扫码支付对应金额
-- 系统通过金额和时间匹配订单
-
-### 转账收款（无需额外配置）
-
-**工作原理**：
-- 客户转账时填写订单号作为备注
-- 系统监控账单，通过备注匹配订单
-
-## 支付宝调用流程
-
-### 创建支付订单
-
-```php
-// 发起支付请求
-$params = [
-    'pid' => '商户ID',
-    'type' => 'alipay',
-    'out_trade_no' => '订单号',
-    'notify_url' => '通知地址',
-    'return_url' => '返回地址', 
-    'name' => '商品名称',
-    'money' => '支付金额',
-    'sign' => '签名'
-];
-
-// POST 到 /submit.php 或 /mapi.php
-```
-
-### 监控支付状态
-
-系统会自动：
-
-1. **查询账单**: 每30秒查询支付宝账单API
-2. **匹配订单**: 根据模式匹配相应订单
-3. **更新状态**: 自动更新订单为已支付
-4. **发送通知**: 向商户notify_url发送支付成功通知
-
-### 查询订单状态
+示例：
 
 ```bash
-# 查询单个订单
-GET /api.php?act=order&pid=商户ID&out_trade_no=订单号
-
-# 查询商户信息
-GET /api.php?act=query&pid=商户ID&key=商户密钥
+curl "http://localhost:8080/api.php?action=order&pid=1001xxxx&out_trade_no=ORDER_123"
 ```
 
-## 支付页面
+返回判断：
 
-访问 `/submit.php` 生成支付页面，包含：
+- `code=1 且 status=1`：已支付
+- `code=1 且 status=0`：未支付
+- `code=-1`：查询失败
 
-- 订单信息展示
-- 二维码显示
-- 实时倒计时（5分钟）
-- 支付状态检查
+---
 
-## 系统监控
+## 8. 健康检查
 
-### 健康检查
+接口：
+
+`GET /health.php`
+
+示例：
 
 ```bash
-# 检查系统状态
-curl http://domain/health.php
+curl "http://localhost:8080/health.php"
 ```
 
-### 日志查看
+可用于检查：
+
+- 数据库状态
+- 监控状态
+- 支付相关服务状态
+
+---
+
+## 9. 常见问题排查
+
+### 9.1 `health.php` 报 `Permission denied`
+
+原因：挂载目录权限不足，Apache/PHP 无法读取项目文件。  
+处理：
+
+- 确认挂载命令正确：`-v "本地项目目录:/var/www/html"`
+- 使用当前项目提供的 entrypoint 自动修复权限
+- 必要时重建容器：
 
 ```bash
-# 查看实时日志
-tail -f data/app.log
+docker compose down
+docker compose up -d --build
 ```
 
-## 目录结构
+### 9.2 Composer 安装超时
+
+项目已默认设置：
+
+- 国内镜像源
+- 进程超时 `1800`
+- 内存限制 `-1`
+
+如仍慢，可重试一次构建或检查本机网络代理。
+
+### 9.3 通知成功但页面未及时变“已支付”
+
+当前版本已做两项修复：
+
+- 前端轮询请求禁用缓存
+- 订单查询会优先返回已支付记录，并带实时补偿检测
+
+若仍异常，优先检查是否重复创建了同一 `out_trade_no` 订单。
+
+---
+
+## 10. 建议上线清单
+
+- 使用独立域名并配置 HTTPS
+- 妥善保存 `config/alipay.php` 与商户密钥
+- 打开 `pushplus` 便于实时告警
+- 定期备份 `data/`（特别是 `codepay.db`）
+
+## 11. 接入例子
 
 ```
-alimpay/
-├── api.php              # API接口
-├── submit.php           # 支付页面
-├── mapi.php            # 移动端API  
-├── health.php          # 健康检查
-├── qrcode.php          # 二维码访问
-├── config/             # 配置文件
-│   └── alipay.php     # 支付宝配置
-├── src/Core/          # 核心类库
-├── data/              # 数据存储
-└── qrcode/            # 二维码文件
+import hashlib
+import time
+import webbrowser
+from urllib.parse import urlencode,quote
+import requests
+BASE_URL = ""  # 你的 AliMPay 访问地址（按实际端口改）
+PID = ""                # 商户ID（config/codepay.json）
+MERCHANT_KEY = ""  # 商户密钥（config/codepay.json）
+
+def generate_payment_sign(data: dict, merchant_key: str) -> str:
+    """CodePay/AliMPay MD5 签名：过滤空值和 sign/sign_type，按键排序后 md5(str + key)"""
+    sign_data = {
+        k: v
+        for k, v in data.items()
+        if k not in ("sign", "sign_type") and v is not None and str(v) != ""
+    }
+    sign_str = "&".join(f"{k}={sign_data[k]}" for k in sorted(sign_data))
+    return hashlib.md5((sign_str + merchant_key).encode("utf-8")).hexdigest()
+
+
+def create_order(money: str = "0.01", name: str = "测试商品") -> dict:
+    out_trade_no = f"DEMO{time.strftime('%Y%m%d%H%M%S')}"
+
+    # 本地自测推荐：
+    # notify_url 填 AliMPay 自己的 /notify.php
+    # return_url 填一个你希望支付完成后跳转的页面
+    payment_data = {
+        "pid": PID,
+        "type": "alipay",
+        "out_trade_no": "ORDER_" + str(int(time.time())),
+        "notify_url": f"1",
+        "return_url": f"1",  # 同步跳转地址(用户支付完跳转的网页)
+        "name": name,
+        "money": money,
+        "sign_type": "MD5",
+    }
+    payment_data["sign"] = generate_payment_sign(payment_data, MERCHANT_KEY)
+    resp = requests.post(f"{BASE_URL}/mapi.php", data=payment_data, timeout=20)
+    resp.raise_for_status()
+    result = resp.json()
+
+    return {
+        "request": payment_data,
+        "response": result,
+    }
+
+
+def open_submit_page(payment_data: dict) -> str:
+    url = f"{BASE_URL}/submit.php?{urlencode(payment_data)}"
+    webbrowser.open(url)
+    return url
+
+
+def poll_order(out_trade_no: str, interval: int = 3, max_retry: int = 40) -> None:
+    print(f"开始轮询订单状态: {out_trade_no}")
+    for i in range(1, max_retry + 1):
+        try:
+            r = requests.get(
+                f"{BASE_URL}/api.php",
+                params={"action": "order_trade", "trade_no": out_trade_no},
+                timeout=10,
+            )
+            data = r.json()
+            print(data)
+            status = data["status"]
+            print(f"[{i}/{max_retry}] status={status} data={data}")
+            if status == 1:
+                print("订单已支付成功")
+                return
+        except Exception as e:
+            print(f"[{i}/{max_retry}] 轮询异常: {e}")
+        time.sleep(interval)
+
+    print("轮询结束：订单仍未支付或未同步")
+
+
+if __name__ == "__main__":
+    ret = create_order(money="0.01", name="模拟测试订单1")
+    req = ret["request"]
+    res = ret["response"]
+    print("下单请求:", req)
+    print("下单响应:", res)
+    if int(res.get("code", -1)) != 1:
+        raise RuntimeError(f"下单失败: {res}")
+    pay_page = open_submit_page(req)
+    print("已打开支付页:", pay_page)
+    poll_order(res["trade_no"])
 ```
 
-## 签名算法
 
-使用MD5签名算法：
-
-```php
-// 1. 参数按键名升序排序
-// 2. 拼接成 key1=value1&key2=value2 格式  
-// 3. 末尾拼接商户密钥
-// 4. 计算MD5值
-
-$signStr = 'money=0.01&name=测试&out_trade_no=123&pid=1001';
-$sign = md5($signStr . $merchantKey);
-```
-
-## 常见问题
-
-
-### Q: 支付检测延迟多久？  
-A: 通常在支付完成后30秒内检测到并发送通知。
-
-### Q: 订单超时时间是多久？
-A: 订单创建后5分钟内必须完成支付，超时自动删除。
-
-### Q: 如何调试支付问题？
-A: 查看 `data/app.log` 日志文件，使用健康检查接口排查。
-
-### Q: 如何部署到生产环境？
-A: 将项目部署到Web服务器，配置好支付宝参数即可。
-
-
-## 开源协议
-
-MIT License
-
-## 免责声明
-
-本项目仅供学习交流使用，使用者需确保遵守相关法律法规和支付宝服务协议。 
