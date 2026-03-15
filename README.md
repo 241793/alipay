@@ -12,17 +12,16 @@ AliMPay 是一个基于支付宝账单检测的聚合收款系统，免挂码支
 - 提供订单状态查询接口
 
 适用场景：
-
 - 个人站点收款
 - 简单订单支付状态管理
 - 需要“支付成功后自动通知”的系统对接
 
 docker搭建速通：
-1、首先上传本项目到对应文件，然后拉取镜像
+- 首先上传本项目到对应文件，然后拉取镜像
 docker run -d --name alipay -p 5002:80 -v "你的路径\AliMPay-main:/var/www/html" 241793/alipay:latest
-2、填写支付宝配置(config/alipay.php)，上传自己的经营码或收款码到qrcode/business_qr.png
-3、访问http://localhost:8080/health.php生成商户PID等
-4、自己根据文末例子测试是否正常回调
+- 填写支付宝配置(config/alipay.php)，上传自己的经营码或收款码到qrcode/business_qr.png
+- 访问http://localhost:8080/health.php生成商户PID等
+- 自己根据文末例子测试是否正常回调
 
 ---
 
