@@ -38,7 +38,7 @@ docker run -d --name alipay -p 5002:80 -v "你的路径\AliMPay-main:/var/www/ht
 
 ---
 
-## 3. Docker 部署（推荐）
+## 3. Docker 部署（推荐）我已经打包好，可以跳过这个，项目没有放compose.yml文件
 
 ## 3.1 使用 docker compose
 
@@ -59,6 +59,7 @@ docker compose up -d --build
 - `http://localhost:8080/health.php`（第一次必需访问这个）
 
 ## 3.2 使用 docker run
+
 
 ```bash
 docker run -d --name alipay -p 5002:80 -v "你的路径\AliMPay-main:/var/www/html" 241793/alipay:latest
