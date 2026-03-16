@@ -295,13 +295,16 @@ def open_submit_page(payment_data: dict) -> str:
     return url
 
 
+
 def poll_order(out_trade_no: str, interval: int = 3, max_retry: int = 40) -> None:
     print(f"开始轮询订单状态: {out_trade_no}")
     for i in range(1, max_retry + 1):
+
         try:
+
             r = requests.get(
                 f"{BASE_URL}/api.php",
-                params={"action": "order_trade", "trade_no": out_trade_no},
+                params={"action": "order","pid":PID, "out_trade_no": out_trade_no},
                 timeout=10,
             )
             data = r.json()
@@ -313,22 +316,27 @@ def poll_order(out_trade_no: str, interval: int = 3, max_retry: int = 40) -> Non
                 return
         except Exception as e:
             print(f"[{i}/{max_retry}] 轮询异常: {e}")
+
         time.sleep(interval)
 
     print("轮询结束：订单仍未支付或未同步")
 
 
 if __name__ == "__main__":
+
     ret = create_order(money="0.01", name="模拟测试订单1")
     req = ret["request"]
     res = ret["response"]
+
     print("下单请求:", req)
     print("下单响应:", res)
+
     if int(res.get("code", -1)) != 1:
         raise RuntimeError(f"下单失败: {res}")
+
     pay_page = open_submit_page(req)
     print("已打开支付页:", pay_page)
-    poll_order(res["trade_no"])
+    poll_order(res["out_trade_no"])
 ```
 
 
