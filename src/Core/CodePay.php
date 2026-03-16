@@ -414,7 +414,7 @@ class CodePay
             return $protocol . '://' . $host;
         }
         
-        return $protocol . '://' . $host . ':' . $port;
+        return $protocol . '://' . $host;
     }
 
     /**
