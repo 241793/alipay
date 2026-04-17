@@ -3,6 +3,7 @@
 namespace AliMPay\Core;
 
 use AliMPay\Utils\Logger;
+use AliMPay\Utils\PushPlusNotifier;
 use AliMPay\Utils\QRCodeGenerator;
 use AliMPay\Core\AlipayTransfer; // Added import for AlipayTransfer
 
@@ -15,6 +16,7 @@ class CodePay
     private $configFile;
     private $ordersFile;
     private $db;
+    private $pushPlusNotifier;
     
     public function __construct()
     {
@@ -25,6 +27,7 @@ class CodePay
         
         // Load configurations
         $this->config = require __DIR__ . '/../../config/alipay.php';
+        $this->pushPlusNotifier = new PushPlusNotifier($this->config, $this->logger);
         $this->configFile = __DIR__ . '/../../config/codepay.json';
         $this->ordersFile = __DIR__ . '/../../data/orders.json';
         
@@ -411,7 +414,7 @@ class CodePay
             return $protocol . '://' . $host;
         }
         
-        return $protocol . '://' . $host . ':' . $port;
+        return $protocol . '://' . $host;
     }
 
     /**
@@ -565,9 +568,15 @@ class CodePay
                 ];
             }
 
+            // Prefer a paid record when duplicates exist for the same out_trade_no.
             $order = $this->db->get('codepay_orders', '*', [
                 'out_trade_no' => $outTradeNo,
-                'pid' => $pid
+                'pid' => $pid,
+                'ORDER' => [
+                    'status' => 'DESC',
+                    'add_time' => 'DESC',
+                    'id' => 'DESC'
+                ]
             ]);
 
             if (!$order) {
@@ -672,9 +681,14 @@ class CodePay
                 throw new \InvalidArgumentException('Invalid signature');
             }
 
-            // Find order and update status
+            // Find target order; if duplicates exist, prioritize latest pending record.
             $order = $this->db->get('codepay_orders', '*', [
-                'out_trade_no' => $params['out_trade_no']
+                'out_trade_no' => $params['out_trade_no'],
+                'ORDER' => [
+                    'status' => 'ASC',
+                    'add_time' => 'DESC',
+                    'id' => 'DESC'
+                ]
             ]);
 
             if (!$order) {
@@ -694,9 +708,11 @@ class CodePay
                 $this->db->update('codepay_orders', [
                     'status' => 1,
                     'pay_time' => date('Y-m-d H:i:s')
-                ], ['out_trade_no' => $params['out_trade_no']]);
+                ], ['id' => $order['id']]);
                 
                 $this->logger->info('Order status updated to paid.', ['out_trade_no' => $params['out_trade_no']]);
+                $order['pay_time'] = date('Y-m-d H:i:s');
+                $this->sendPushPlusNotification($order, 'codepay_notify_api');
             }
 
             return [
@@ -771,4 +787,26 @@ class CodePay
             return false;
         }
     }
-} 
+
+    public function sendPushPlusNotification(array $orderData, string $detectedBy = 'payment_monitor'): bool
+    {
+        return $this->pushPlusNotifier->sendPaymentSuccess($orderData, $detectedBy);
+    }
+
+    public function sendSuccessNotifications(array $orderData, string $detectedBy = 'payment_monitor'): array
+    {
+        $merchantSent = false;
+        if (!empty($orderData['notify_url'])) {
+            $merchantSent = $this->sendNotification($orderData);
+        } else {
+            $this->logger->warning('No notify_url provided for order.', ['out_trade_no' => $orderData['out_trade_no'] ?? '']);
+        }
+
+        $pushPlusSent = $this->sendPushPlusNotification($orderData, $detectedBy);
+
+        return [
+            'merchant' => $merchantSent,
+            'pushplus' => $pushPlusSent
+        ];
+    }
+}
