@@ -10,7 +10,8 @@ win版已停更(0.0.9)
 
 一个可以通过AI驱动的机器人框架,通过python实现,具有多协议接入、插件化架构、规则引擎、持久化存储和可视化面板的自动化工具，最新版实现Agent管理，向openclaw靠齐。
 win电脑需要有python环境.UI有点丑懒得优化了，但功能俱全。
-<img width="1821" height="895" alt="1774886266404" src="https://github.com/user-attachments/assets/b38a93e0-6389-46bc-a105-d2b1462ad1fd" />
+<img width="1855" height="827" alt="image" src="https://github.com/user-attachments/assets/6730a9bf-acb3-4852-8aec-e874af20e620" />
+
 
 ntqq的llonebot插件配置ws:ws://127.0.0.1:port/ws/qq
 
